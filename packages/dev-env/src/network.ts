@@ -67,7 +67,7 @@ export class TestNetwork extends TestNetworkNoAppView {
       port: bskyPort,
       plcUrl: plc.url,
       pdsPort,
-      repoProvider: `ws://localhost:${pdsPort}`,
+      repoProvider: `ws://${params.pds?.alternativeHost ?? 'localhost'}:${pdsPort}`,
       dbPostgresSchema: `appview_${dbPostgresSchema}`,
       dbPostgresUrl,
       redisHost,
@@ -121,17 +121,17 @@ export class TestNetwork extends TestNetworkNoAppView {
     await ozone.createPolicies()
 
     await thirdPartyPds.processAll()
-    await pds.processAll()
+    // await pds.processAll()
     await ozone.processAll()
     await bsky.sub.processAll()
     await thirdPartyPds.close()
 
     // Weird but if we do this before pds.processAll() somehow appview loses this user and tests in different parts fail because appview doesn't return this user in various contexts anymore
-    const ozoneVerifierPassword =
-      await ozoneServiceProfile.createAppPasswordForVerification()
-    if (ozone.daemon.ctx.cfg.verifier) {
-      ozone.daemon.ctx.cfg.verifier.password = ozoneVerifierPassword
-    }
+    // const ozoneVerifierPassword =
+    //   await ozoneServiceProfile.createAppPasswordForVerification()
+    // if (ozone.daemon.ctx.cfg.verifier) {
+    //   ozone.daemon.ctx.cfg.verifier.password = ozoneVerifierPassword
+    // }
 
     let introspect: IntrospectServer | undefined = undefined
     if (params.introspect?.port) {
@@ -145,6 +145,121 @@ export class TestNetwork extends TestNetworkNoAppView {
     }
 
     return new TestNetwork(plc, pds, bsky, ozone, introspect)
+  }
+
+  static async createSecond(
+    network: TestNetwork,
+    params: Partial<TestServerParams> = {},
+  ): Promise<TestNetwork> {
+    const redisHost = process.env.REDIS_HOST
+    const dbPostgresUrl = params.dbPostgresUrl || process.env.DB_POSTGRES_URL
+    assert(dbPostgresUrl, 'Missing postgres url for tests')
+    assert(redisHost, 'Missing redis host for tests')
+    const dbPostgresSchema =
+      params.dbPostgresSchema || process.env.DB_POSTGRES_SCHEMA
+
+    const bskyPort = params.bsky?.port ?? (await getPort())
+    const pdsPort = params.pds?.port ?? (await getPort())
+    const ozonePort = params.ozone?.port ?? (await getPort())
+
+    const thirdPartyPds = await TestPds.create({
+      didPlcUrl: network.plc.url,
+      ...params.pds,
+      inviteRequired: false,
+      port: await getPort(),
+    })
+
+    const ozoneUrl = `http://localhost:${ozonePort}`
+
+    // @TODO (?) rework the ServiceProfile to live on a separate PDS instead of
+    // requiring to migrate to the main PDS
+    const ozoneServiceProfile = await OzoneServiceProfile.create(
+      thirdPartyPds,
+      ozoneUrl,
+    )
+    const lexiconAuthorityProfile =
+      await LexiconAuthorityProfile.create(thirdPartyPds)
+
+    const bsky = await TestBsky.create({
+      port: bskyPort,
+      plcUrl: network.plc.url,
+      pdsPort,
+      repoProvider: `ws://${params.pds?.alternativeHost ?? 'localhost'}:${pdsPort}`,
+      dbPostgresSchema: `appview_${dbPostgresSchema}`,
+      dbPostgresUrl,
+      redisHost,
+      modServiceDid: ozoneServiceProfile.did,
+      labelsFromIssuerDids: [ozoneServiceProfile.did, EXAMPLE_LABELER],
+      ...params.bsky,
+    })
+
+    const pds = await TestPds.create({
+      didPlcUrl: network.plc.url,
+      bskyAppViewUrl: bsky.url,
+      bskyAppViewDid: bsky.ctx.cfg.serverDid,
+      modServiceUrl: ozoneUrl,
+      modServiceDid: ozoneServiceProfile.did,
+      lexiconDidAuthority: lexiconAuthorityProfile.did,
+      ...params.pds,
+      port: 2999,
+    })
+
+    // mock before any events start flowing from pds so that we don't miss e.g. any handle resolutions.
+    mockNetworkUtilities(pds, bsky)
+    mockNetworkUtilities(network.pds, bsky)
+
+    const ozone = await TestOzone.create({
+      port: ozonePort,
+      plcUrl: network.plc.url,
+      signingKey: ozoneServiceProfile.key,
+      serverDid: ozoneServiceProfile.did,
+      dbPostgresSchema: `ozone_${dbPostgresSchema || 'db'}`,
+      dbPostgresUrl,
+      appviewUrl: bsky.url,
+      appviewDid: bsky.ctx.cfg.serverDid,
+      appviewPushEvents: true,
+      pdsUrl: pds.url,
+      pdsDid: pds.ctx.cfg.service.did,
+      verifierDid: ozoneServiceProfile.did,
+      verifierUrl: pds.url,
+      verifierPassword: 'temp',
+      ...params.ozone,
+    })
+
+    await ozoneServiceProfile.migrateTo(pds)
+    await ozoneServiceProfile.createRecords()
+
+    await lexiconAuthorityProfile.migrateTo(pds)
+    await lexiconAuthorityProfile.createRecords()
+
+    await ozone.addAdminDid(ozoneServiceProfile.did)
+    await ozone.createPolicies()
+
+    await thirdPartyPds.processAll()
+    // await pds.processAll()
+    await ozone.processAll()
+    await bsky.sub.processAll()
+    await thirdPartyPds.close()
+
+    // Weird but if we do this before pds.processAll() somehow appview loses this user and tests in different parts fail because appview doesn't return this user in various contexts anymore
+    // const ozoneVerifierPassword =
+    //   await ozoneServiceProfile.createAppPasswordForVerification()
+    // if (ozone.daemon.ctx.cfg.verifier) {
+    //   ozone.daemon.ctx.cfg.verifier.password = ozoneVerifierPassword
+    // }
+
+    let introspect: IntrospectServer | undefined = undefined
+    if (params.introspect?.port) {
+      introspect = await IntrospectServer.start(
+        params.introspect.port,
+        network.plc,
+        pds,
+        bsky,
+        ozone,
+      )
+    }
+
+    return new TestNetwork(network.plc, pds, bsky, ozone, introspect)
   }
 
   async processFullSubscription(timeout = 5000) {
