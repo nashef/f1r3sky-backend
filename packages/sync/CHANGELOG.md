@@ -1,5 +1,18 @@
 # @atproto/sync
 
+## 0.1.37
+
+### Patch Changes
+
+- Updated dependencies [[`1dd20d3a8`](https://github.com/bluesky-social/atproto/commit/1dd20d3a81cda29392d8d63d13082254ec5f68a8)]:
+  - @atproto/xrpc-server@0.9.6
+
+## 0.1.36
+
+### Patch Changes
+
+- [#4038](https://github.com/bluesky-social/atproto/pull/4038) [`756ab5d87`](https://github.com/bluesky-social/atproto/commit/756ab5d87fea75e8648a6bdd545d8b441bfb2dd6) Thanks [@knotbin](https://github.com/knotbin)! - filtercollections wildcard endings
+
 ## 0.1.35
 
 ### Patch Changes

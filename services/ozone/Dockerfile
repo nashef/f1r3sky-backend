@@ -18,9 +18,11 @@ COPY ./packages/common ./packages/common
 COPY ./packages/common-web ./packages/common-web
 COPY ./packages/crypto ./packages/crypto
 COPY ./packages/identity ./packages/identity
+COPY ./packages/lex ./packages/lex
 COPY ./packages/repo ./packages/repo
 COPY ./packages/syntax ./packages/syntax
 COPY ./packages/lexicon ./packages/lexicon
+COPY ./packages/ws-client ./packages/ws-client
 COPY ./packages/xrpc ./packages/xrpc
 COPY ./packages/xrpc-server ./packages/xrpc-server
 COPY ./services/ozone ./services/ozone
