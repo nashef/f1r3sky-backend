@@ -47,13 +47,14 @@ COPY ./packages/internal/xrpc-utils ./packages/internal/xrpc-utils
 COPY ./services/pds ./services/pds
 
 # install all deps
-RUN pnpm install --frozen-lockfile > /dev/null
+ENV NODE_OPTIONS="--dns-result-order=ipv4first"
+RUN pnpm install --frozen-lockfile
 # build all packages with external node_modules
-RUN pnpm build > /dev/null
+RUN pnpm build
 # clean up
 RUN rm -rf node_modules
 # install only prod deps, hoisted to root node_modules dir
-RUN pnpm install --prod --shamefully-hoist --frozen-lockfile --prefer-offline > /dev/null
+RUN pnpm install --prod --shamefully-hoist --frozen-lockfile --prefer-offline
 
 WORKDIR /app/services/pds
 
